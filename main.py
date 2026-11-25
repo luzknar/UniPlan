@@ -6,11 +6,44 @@ from personal_schedule import PersonalSchedule
 from file_manager import FileManager
 
 
-def required(prompt):
-    value = input(prompt).strip()
-    if not value:
-        raise ValueError('빈 값은 입력할 수 없습니다.')
-    return value
+def required(prompt, default=None):
+    while True:
+        value = input(prompt).strip()
+        if value:
+            return value
+        if default is not None:
+            return default
+        print('필수 항목입니다. 다시 입력하세요.')
+
+
+def select(prompt, choices, default=None):
+    while True:
+        value = required(prompt, default)
+        if value in choices:
+            return value
+        print('선택 가능한 값:', ', '.join(choices))
+
+
+def read_date(prompt, default=None):
+    while True:
+        value = required(prompt, default)
+        try:
+            result = date.fromisoformat(value).isoformat()
+            if result == value:
+                return result
+        except ValueError:
+            pass
+        print('올바른 날짜를 YYYY-MM-DD 형식으로 입력하세요.')
+
+
+def read_id(manager, prompt):
+    while True:
+        try:
+            number = int(required(prompt))
+            manager.find(number)
+            return number
+        except ValueError:
+            print('존재하는 일정 번호를 입력하세요.')
 
 
 def show(schedules):
@@ -21,23 +54,19 @@ def show(schedules):
 
 
 def register(manager):
-    kind = input('1. 과제  2. 시험  3. 개인 일정: ').strip()
-    if kind not in ('1', '2', '3'):
-        raise ValueError('잘못된 일정 유형입니다.')
+    kind = select('1. 과제  2. 시험  3. 개인 일정: ', ('1', '2', '3'))
     title = required('제목: ')
     subject = required('과목명: ') if kind != '3' else None
-    deadline = date.fromisoformat(required('날짜 (YYYY-MM-DD): ')).isoformat()
+    deadline = read_date('날짜 (YYYY-MM-DD): ')
     args = (manager.next_id(), title, subject, deadline)
     if kind == '1':
-        submission = required('제출 형식: ')
-        priority = required('우선순위 (상/중/하): ')
-        if priority not in ('상', '중', '하'):
-            raise ValueError('상, 중, 하 중 하나를 입력하세요.')
+        submission = required('제출 형식 [미정]: ', '미정')
+        priority = select('우선순위 (상/중/하) [중]: ', ('상', '중', '하'), '중')
         schedule = Assignment(*args, submission, priority)
     elif kind == '2':
-        schedule = Exam(*args, required('시험 범위: '), required('시험 유형: '))
+        schedule = Exam(*args, required('시험 범위 [미정]: ', '미정'), required('시험 유형 [미정]: ', '미정'))
     else:
-        schedule = PersonalSchedule(*args, required('장소: '), required('일정 유형: '))
+        schedule = PersonalSchedule(*args, required('장소 [미정]: ', '미정'), required('일정 유형 [기타]: ', '기타'))
     manager.add_schedule(schedule)
     print('일정을 등록했습니다.')
 
@@ -57,38 +86,45 @@ def main():
         print('7. 유형별 조회   8. 과목 관리')
         print('9. 일정 통계     0. 저장 및 종료')
         try:
-            choice = input('메뉴 선택: ').strip()
+            choice = select('메뉴 선택: ', tuple('0123456789'))
             if choice == '1':
                 register(manager)
             elif choice == '2':
                 show(manager.sort_schedules())
             elif choice == '3':
+                if not manager.schedules:
+                    print('등록된 일정이 없습니다.')
+                    continue
                 show(manager.schedules)
-                number = int(input('수정할 일정 번호: '))
+                number = read_id(manager, '수정할 일정 번호: ')
                 schedule = manager.find(number)
                 title = input(f'새 제목 ({schedule.title}): ').strip() or schedule.title
-                deadline = input(f'새 날짜 ({schedule.deadline}): ').strip() or schedule.deadline
+                deadline = read_date(f'새 날짜 ({schedule.deadline}): ', schedule.deadline)
                 manager.update_schedule(number, title, deadline)
                 print('수정했습니다.')
             elif choice == '4':
+                if not manager.schedules:
+                    print('등록된 일정이 없습니다.')
+                    continue
                 show(manager.schedules)
-                manager.delete_schedule(int(input('삭제할 일정 번호: ')))
+                manager.delete_schedule(read_id(manager, '삭제할 일정 번호: '))
                 print('삭제했습니다.')
             elif choice == '5':
+                if not manager.schedules:
+                    print('등록된 일정이 없습니다.')
+                    continue
                 show(manager.schedules)
-                manager.find(int(input('완료할 일정 번호: '))).complete()
+                manager.find(read_id(manager, '완료할 일정 번호: ')).complete()
                 print('완료 처리했습니다.')
             elif choice == '6':
                 show(manager.search_schedule(required('검색어: ')))
             elif choice == '7':
                 kinds = {'1': 'Assignment', '2': 'Exam', '3': 'PersonalSchedule'}
-                kind = input('1. 과제  2. 시험  3. 개인 일정: ')
-                if kind not in kinds:
-                    raise ValueError('잘못된 유형입니다.')
+                kind = select('1. 과제  2. 시험  3. 개인 일정: ', kinds)
                 show(manager.filter_schedules(kinds[kind]))
             elif choice == '8':
                 print('과목 목록:', ', '.join(s.name for s in manager.subjects) or '없음')
-                action = input('1. 과목 등록  2. 과목별 조회: ')
+                action = select('1. 과목 등록  2. 과목별 조회: ', ('1', '2'))
                 if action == '1':
                     manager.add_subject(required('과목명: '))
                 elif action == '2':
